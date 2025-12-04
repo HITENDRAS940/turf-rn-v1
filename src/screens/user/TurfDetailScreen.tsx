@@ -100,6 +100,12 @@ const TurfDetailScreen = ({ route, navigation }: any) => {
     fetchTurfDetails();
   }, []);
 
+  React.useLayoutEffect(() => {
+    navigation.getParent()?.setOptions({
+      tabBarStyle: { display: 'none' },
+    });
+  }, [navigation]);
+
   useEffect(() => {
     if (turf?.id) {
       fetchMinPrice();

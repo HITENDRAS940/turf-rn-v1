@@ -74,15 +74,27 @@ const UserNavigator = () => {
         options={({ route }) => ({
           tabBarStyle: ((route) => {
             const routeName = getFocusedRouteNameFromRoute(route) ?? 'TurfList';
-            if (routeName === 'TurfDetail' || routeName === 'PaymentSelection') {
-              return { display: 'none' };
+            if (routeName === 'TurfList') {
+              return undefined;
             }
-            return undefined;
+            return { display: 'none' };
           })(route),
         })}
       />
       <Tab.Screen name="Bookings" component={MyBookingsScreen} />
-      <Tab.Screen name="Profile" component={ProfileStack} />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileStack}
+        options={({ route }) => ({
+          tabBarStyle: ((route) => {
+            const routeName = getFocusedRouteNameFromRoute(route) ?? 'ProfileMain';
+            if (routeName === 'ProfileMain') {
+              return undefined;
+            }
+            return { display: 'none' };
+          })(route),
+        })}
+      />
     </Tab.Navigator>
   );
 };

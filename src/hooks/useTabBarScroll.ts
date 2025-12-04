@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 /**
  * Hook to hide/show the bottom tab bar based on scroll direction.
@@ -58,6 +59,32 @@ export const useTabBarScroll = (navigation: any, options: { isRootTab?: boolean 
 
         offset.current = currentOffset;
     }, [navigation]);
+
+    useFocusEffect(
+        useCallback(() => {
+            // Restore visibility state based on current scroll position/ref
+            // If we are coming back from a screen that hid the tabs, we need to restore them
+            // UNLESS we were scrolled down.
+
+            // Note: We don't have easy access to the exact current scroll position here without a ref to the list.
+            // However, we can rely on the last known offset.current.
+
+            if (offset.current <= SCROLL_THRESHOLD) {
+                // If we are near the top, show the tabs
+                setTabBarVisible(true);
+                isTabBarVisible.current = true;
+            } else {
+                // If we are scrolled down, ensure they stay hidden (or hide them if they were shown)
+                // But wait, if we come back from TurfDetail, tabs are hidden.
+                // If we are scrolled down, we want them hidden. So we do nothing or enforce hidden.
+                // If we are scrolled down, isTabBarVisible.current should be false.
+
+                if (!isTabBarVisible.current) {
+                    setTabBarVisible(false);
+                }
+            }
+        }, [navigation])
+    );
 
     return { onScroll };
 };

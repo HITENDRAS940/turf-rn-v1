@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, withSpring } from 'react-native-reanimated';
 
 const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigation }) => {
   const { theme } = useTheme();
@@ -13,13 +14,29 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
   const focusedRoute = state.routes[state.index];
   const focusedDescriptor = descriptors[focusedRoute.key];
   const focusedOptions = focusedDescriptor.options;
+  
+  const translateY = useSharedValue(0);
+  const isHidden = (focusedOptions.tabBarStyle as any)?.display === 'none';
 
-  if ((focusedOptions.tabBarStyle as any)?.display === 'none') {
-    return null;
-  }
+  React.useEffect(() => {
+    if (isHidden) {
+      translateY.value = withTiming(300, { duration: 300 });
+    } else {
+      translateY.value = withTiming(0, { duration: 300 });
+    }
+  }, [isHidden]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <Animated.View 
+      style={[styles.container, { paddingBottom: insets.bottom }, animatedStyle]}
+      pointerEvents={isHidden ? 'none' : 'auto'}
+    >
       <View style={[styles.tabBar, { backgroundColor: theme.colors.surface, shadowColor: theme.colors.shadow }]}>
         {state.routes.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -94,7 +111,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors, navigat
           );
         })}
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
