@@ -59,6 +59,8 @@ export const turfAPI = {
     api.get(`/turf-slots/${turfId}/availability?date=${date}`),
   getLowestPrice: (turfId: number) =>
     api.get(`/turfs/${turfId}/lowest-price`),
+  searchByAvailability: (data: { date: string; slotId: number; city: string }) =>
+    api.get('/turfs/search-by-availability', { params: data }),
 };
 
 // Booking APIs

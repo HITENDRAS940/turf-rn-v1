@@ -24,6 +24,7 @@ import EmptyState from '../../components/shared/EmptyState';
 import TurfCard from '../../components/user/TurfCard';
 import { Alert } from 'react-native';
 import { useTabBarScroll } from '../../hooks/useTabBarScroll';
+import TurfFilterModal from '../../components/user/TurfFilterModal';
 
 const TurfListScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -32,9 +33,12 @@ const TurfListScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [isFilterActive, setIsFilterActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Turf[]>([]);
   const [searching, setSearching] = useState(false);
+  const [activeFilterParams, setActiveFilterParams] = useState<{date: string, slotId: number, city: string} | null>(null);
   const { onScroll } = useTabBarScroll(navigation);
 
   useEffect(() => {
@@ -45,7 +49,6 @@ const TurfListScreen = ({ navigation }: any) => {
     try {
       // Fetch all turfs first
       const response = await turfAPI.getAllTurfs();
-      console.log('All turfs from API:', response.data);
       
       // Client-side filter to show only turfs with availability: true
       // Handle cases where availability might be undefined, null, or false
@@ -69,7 +72,24 @@ const TurfListScreen = ({ navigation }: any) => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTurfs();
+    if (isFilterActive && activeFilterParams) {
+      // Refresh the search with existing params
+      // We'll reuse the logic from handleFilterApply but without the loading state that blocks UI (since we have refresh control)
+      turfAPI.searchByAvailability(activeFilterParams)
+        .then(response => {
+          setTurfs(response.data);
+          // Keep filter active
+        })
+        .catch(error => {
+           console.error('Error refreshing search:', error);
+           Alert.alert('Error', 'Failed to refresh search results');
+        })
+        .finally(() => {
+          setRefreshing(false);
+        });
+    } else {
+      fetchTurfs();
+    }
   };
 
   const handleSearch = () => {
@@ -99,6 +119,33 @@ const TurfListScreen = ({ navigation }: any) => {
     
     setSearchResults(filtered);
     setSearching(false);
+  };
+
+  const handleFilterApply = async (date: string, slotId: number, city: string) => {
+    setLoading(true);
+    try {
+      const response = await turfAPI.searchByAvailability({
+        date,
+        slotId,
+        city: city || '', 
+      });
+      console.log('Search availability results:', response.data);
+      setTurfs(response.data);
+      setIsFilterActive(true);
+      setActiveFilterParams({ date, slotId, city: city || '' });
+    } catch (error) {
+      console.error('Error searching by availability:', error);
+      Alert.alert('Error', 'Failed to search turfs. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setIsFilterActive(false);
+    setActiveFilterParams(null);
+    setLoading(true);
+    fetchTurfs();
   };
 
   // Perform search whenever query changes
@@ -168,22 +215,43 @@ const TurfListScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* Floating Search Bar */}
-          <TouchableOpacity 
-            style={styles.searchBar} 
-            onPress={handleSearch}
-            activeOpacity={0.5}
-          >
-            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-            <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
-              Search by name or location...
-            </Text>
-            <View style={[styles.filterButton, { backgroundColor: theme.colors.lightGray }]}>
-              <Ionicons name="options-outline" size={18} color={theme.colors.primary} />
-            </View>
-          </TouchableOpacity>
+          <View style={styles.searchRow}>
+            <TouchableOpacity 
+              style={styles.searchBar} 
+              onPress={handleSearch}
+              activeOpacity={0.5}
+            >
+              <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+              <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
+                Search by name or location...
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.filterButton, { backgroundColor: isFilterActive ? theme.colors.primary : '#FFFFFF' }]}
+              onPress={() => setShowFilterModal(true)}
+            >
+              <Ionicons 
+                name={isFilterActive ? "funnel" : "options-outline"} 
+                size={22} 
+                color={isFilterActive ? '#FFFFFF' : theme.colors.primary} 
+              />
+            </TouchableOpacity>
+          </View>
         </LinearGradient>
       </View>
+
+      {isFilterActive && (
+        <View style={[styles.activeFilterContainer, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+            Showing filtered results
+          </Text>
+          <TouchableOpacity onPress={clearFilters} style={styles.clearFilterButton}>
+            <Text style={[styles.clearFilterText, { color: theme.colors.primary }]}>Clear</Text>
+            <Ionicons name="close-circle" size={16} color={theme.colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {turfs.length === 0 ? (
         <EmptyState
@@ -273,6 +341,13 @@ const TurfListScreen = ({ navigation }: any) => {
           )}
         </ScreenWrapper>
       </Modal>
+
+      {/* Filter Modal */}
+      <TurfFilterModal
+        visible={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        onApply={handleFilterApply}
+      />
     </ScreenWrapper>
   );
 };
@@ -327,7 +402,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 0,
+  },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -340,18 +422,22 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
-    marginBottom: 0,
   },
   searchPlaceholder: {
     flex: 1,
     fontSize: 15,
   },
   filterButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
   },
   list: {
     padding: 16,
@@ -448,6 +534,29 @@ const styles = StyleSheet.create({
   },
   searchResultLocation: {
     fontSize: 14,
+  },
+  activeFilterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  activeFilterText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  clearFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    padding: 4,
+  },
+  clearFilterText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
