@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { Turf } from '../../../types';
@@ -67,13 +67,54 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
         </View>
       </View>
 
-      {/* Location Map Placeholder */}
+      {/* Location Map Card */}
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         {renderSectionHeader('Location', 'map')}
-        <View style={[styles.mapPlaceholder, { backgroundColor: theme.colors.lightGray }]}>
-          <Ionicons name="map" size={32} color={theme.colors.textSecondary} />
-          <Text style={[styles.mapText, { color: theme.colors.textSecondary }]}>Map View Coming Soon</Text>
-        </View>
+        <TouchableOpacity 
+          style={[styles.mapPlaceholder, { backgroundColor: theme.colors.lightGray }]}
+          onPress={() => {
+            const lat = turf.latitude;
+            const lng = turf.longitude;
+            const label = encodeURIComponent(turf.name);
+            
+            if (lat && lng) {
+              const url = Platform.select({
+                ios: `maps:0,0?q=${label}@${lat},${lng}`,
+                android: `geo:0,0?q=${lat},${lng}(${label})`,
+              });
+              
+              if (url) {
+                Linking.openURL(url).catch(err => console.error('An error occurred', err));
+              }
+            } else {
+              // Fallback for search by query if no coordinates
+              const query = encodeURIComponent(`${turf.name} ${turf.location}`);
+              const url = Platform.select({
+                ios: `maps:0,0?q=${query}`,
+                android: `geo:0,0?q=${query}`,
+              });
+               if (url) {
+                Linking.openURL(url).catch(err => console.error('An error occurred', err));
+              }
+            }
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={styles.mapContent}>
+            <View style={styles.mapIconCircle}>
+              <Ionicons name="map" size={24} color={theme.colors.primary} />
+            </View>
+            <View style={styles.mapTextContainer}>
+              <Text style={[styles.mapTitle, { color: theme.colors.text }]}>View on Map</Text>
+              <Text style={[styles.mapSubtitle, { color: theme.colors.textSecondary }]}>
+                {turf.latitude && turf.longitude ? 'Precise location available' : 'Search location in maps'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+          </View>
+          
+          {/* Decorative map pattern background could go here if we had an image */}
+        </TouchableOpacity>
       </View>
 
       {/* Contact Section */}
@@ -198,15 +239,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   mapPlaceholder: {
-    height: 160,
+    padding: 16,
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  mapContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  mapIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
-  mapText: {
-    fontSize: 14,
-    fontWeight: '600',
+  mapTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  mapTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  mapSubtitle: {
+    fontSize: 13,
   },
   contactButton: {
     flexDirection: 'row',
