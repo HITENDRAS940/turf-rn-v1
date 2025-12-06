@@ -1,3 +1,14 @@
+export type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  UserTabs: undefined;
+  AdminTabs: undefined;
+  ManagerTabs: undefined;
+  TurfDetail: { turfId: number };
+  BookingSummary: { bookingId: string };
+  PaymentSelection: { bookingId: string };
+};
+
 export interface User {
   id: number;
   phone: string;
@@ -27,6 +38,8 @@ export interface Turf {
   openingTime?: string;
   closingTime?: string;
   price?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface TimeSlot {

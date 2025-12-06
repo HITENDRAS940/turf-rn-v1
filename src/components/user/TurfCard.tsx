@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions, ActivityIndicator, Linking, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Turf } from '../../types';
@@ -31,7 +31,24 @@ const TurfCard: React.FC<TurfCardProps> = ({
   };
 
   const handleLocationPress = () => {
-    Alert.alert('Coming Soon', 'Location feature is under development');
+    if (turf.latitude && turf.longitude) {
+      const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
+      const latLng = `${turf.latitude},${turf.longitude}`;
+      const label = turf.name;
+      const url = Platform.select({
+        ios: `${scheme}${label}@${latLng}`,
+        android: `${scheme}${latLng}(${label})`
+      });
+
+      if (url) {
+        Linking.openURL(url).catch(err => {
+            console.error('Error opening maps:', err);
+            Alert.alert('Error', 'Could not open maps application');
+        });
+      }
+    } else {
+      Alert.alert('Location Unavailable', 'Coordinates are not available for this turf');
+    }
   };
 
   const [imageLoading, setImageLoading] = useState<{[key: number]: boolean}>({});

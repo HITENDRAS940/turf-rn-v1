@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,8 +16,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenWrapper } from '../../components/shared/ScreenWrapper';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList, Turf } from '../../types';
 import { turfAPI } from '../../services/api';
-import { Turf } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import LoadingState from '../../components/shared/LoadingState';
 import EmptyState from '../../components/shared/EmptyState';
@@ -25,6 +27,9 @@ import TurfCard from '../../components/user/TurfCard';
 import { Alert } from 'react-native';
 import { useTabBarScroll } from '../../hooks/useTabBarScroll';
 import TurfFilterModal from '../../components/user/TurfFilterModal';
+import { useLocation } from '../../hooks/useLocation';
+import LocationHeader from '../../components/user/LocationHeader';
+import CitySelectionModal from '../../components/user/CitySelectionModal';
 
 const TurfListScreen = ({ navigation }: any) => {
   const { theme } = useTheme();
@@ -40,45 +45,69 @@ const TurfListScreen = ({ navigation }: any) => {
   const [searching, setSearching] = useState(false);
   const [activeFilterParams, setActiveFilterParams] = useState<{date: string, slotId: number, city: string} | null>(null);
   const { onScroll } = useTabBarScroll(navigation);
+  
+  // Location bits
+  const { location, manualCity, detectLocation, setCityManually, detectAndSetToCurrentCity, loading: locationLoading } = useLocation();
+  const [showCityModal, setShowCityModal] = useState(false);
 
-  useEffect(() => {
-    fetchTurfs();
-  }, []);
+  // Refresh data when screen gains focus
+  // Refresh data when screen gains focus or location changes
+  useFocusEffect(
+    useCallback(() => {
+      // Avoid fetching if filter is active, or if location is still being detected
+      if (isFilterActive || locationLoading) return;
 
-  const fetchTurfs = async () => {
+      if (manualCity) {
+         fetchTurfsByCity(manualCity);
+      } else if (location?.city) {
+         fetchTurfsByCity(location.city);
+      } else if (location?.latitude && location?.longitude) {
+         fetchTurfsByLocation(location.latitude, location.longitude);
+      } else {
+         // No location info yet, just stop loading and let empty state show or wait for location
+         setLoading(false);
+      }
+    }, [manualCity, location, locationLoading, isFilterActive])
+  );
+
+
+  const fetchTurfsByLocation = async (lat: number, long: number) => {
+    setLoading(true);
     try {
-      // Fetch all turfs first
-      const response = await turfAPI.getAllTurfs();
-      
-      // Client-side filter to show only turfs with availability: true
-      // Handle cases where availability might be undefined, null, or false
-      const availableTurfs = response.data.filter((turf: Turf) => {
-        // Only show turfs that are explicitly set to available (true)
-        return turf.availability === true;
-      });
-      
-      console.log('Filtered available turfs:', availableTurfs);
-      console.log(`Total turfs: ${response.data.length}, Available turfs: ${availableTurfs.length}`);
-      
-      setTurfs(availableTurfs);
+      const response = await turfAPI.getTurfsByLocation({ latitude: lat, longitude: long });
+      setTurfs(response.data);
     } catch (error) {
-      console.error('Error fetching turfs:', error);
-      Alert.alert('Error', 'Failed to fetch turfs');
+      console.error('Error fetching turfs by location:', error);
+      Alert.alert('Error', 'Failed to fetch nearby turfs');
+      setTurfs([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  const fetchTurfsByCity = async (city: string) => {
+    setLoading(true);
+    try {
+      const response = await turfAPI.getTurfsByCity(city);
+      setTurfs(response.data);
+    } catch (error) {
+      console.error('Error fetching turfs by city:', error);
+      Alert.alert('Error', 'Failed to fetch turfs for this city');
+      setTurfs([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+
   const onRefresh = () => {
     setRefreshing(true);
     if (isFilterActive && activeFilterParams) {
-      // Refresh the search with existing params
-      // We'll reuse the logic from handleFilterApply but without the loading state that blocks UI (since we have refresh control)
       turfAPI.searchByAvailability(activeFilterParams)
         .then(response => {
           setTurfs(response.data);
-          // Keep filter active
         })
         .catch(error => {
            console.error('Error refreshing search:', error);
@@ -88,7 +117,14 @@ const TurfListScreen = ({ navigation }: any) => {
           setRefreshing(false);
         });
     } else {
-      fetchTurfs();
+      // Refresh based on current location mode
+      if (manualCity) {
+        fetchTurfsByCity(manualCity);
+      } else if (location?.latitude && location?.longitude) {
+        fetchTurfsByLocation(location.latitude, location.longitude);
+      } else {
+        setRefreshing(false);
+      }
     }
   };
 
@@ -145,7 +181,17 @@ const TurfListScreen = ({ navigation }: any) => {
     setIsFilterActive(false);
     setActiveFilterParams(null);
     setLoading(true);
-    fetchTurfs();
+    
+    // fetchTurfs() doesn't exist, so we replicate the data refreshing logic
+    if (manualCity) {
+      fetchTurfsByCity(manualCity);
+    } else if (location?.city) {
+      fetchTurfsByCity(location.city);
+    } else if (location?.latitude && location?.longitude) {
+      fetchTurfsByLocation(location.latitude, location.longitude);
+    } else {
+      setLoading(false);
+    }
   };
 
   // Perform search whenever query changes
@@ -195,51 +241,36 @@ const TurfListScreen = ({ navigation }: any) => {
     >
       <StatusBar barStyle="light-content" />
       
-      {/* Modern Header with Gradient */}
-      <View style={styles.headerContainer}>
-        <LinearGradient
-          colors={[theme.colors.primary, theme.colors.secondary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.headerGradient, { paddingTop: insets.top}]}
-        >
-          <View style={styles.headerContent}>
-            <View>
-              <Text style={styles.greetingText}>Welcome</Text>
-              <Text style={styles.headerTitle}>Find Your Turf</Text>
-            </View>
-            <TouchableOpacity style={styles.profileButton}>
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>U</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+      {/* Modern Header with Location */}
+      <LocationHeader 
+        city={manualCity || location?.city} 
+        onPress={() => setShowCityModal(true)}
+        loading={locationLoading}
+      >
+        <View style={styles.searchRow}>
+          <TouchableOpacity 
+            style={styles.searchBar} 
+            onPress={handleSearch}
+            activeOpacity={0.5}
+          >
+            <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+            <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
+              Search by name or location...
+            </Text>
+          </TouchableOpacity>
 
-          <View style={styles.searchRow}>
-            <TouchableOpacity 
-              style={styles.searchBar} 
-              onPress={handleSearch}
-              activeOpacity={0.5}
-            >
-              <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
-              <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
-                Search by name or location...
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.filterButton, { backgroundColor: isFilterActive ? theme.colors.primary : '#FFFFFF' }]}
-              onPress={() => setShowFilterModal(true)}
-            >
-              <Ionicons 
-                name={isFilterActive ? "funnel" : "options-outline"} 
-                size={22} 
-                color={isFilterActive ? '#FFFFFF' : theme.colors.primary} 
-              />
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </View>
+          <TouchableOpacity 
+            style={[styles.filterButton, { backgroundColor: isFilterActive ? theme.colors.primary : '#FFFFFF' }]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <Ionicons 
+              name={isFilterActive ? "funnel" : "options-outline"} 
+              size={22} 
+              color={isFilterActive ? '#FFFFFF' : theme.colors.primary} 
+            />
+          </TouchableOpacity>
+        </View>
+      </LocationHeader>
 
       {isFilterActive && (
         <View style={[styles.activeFilterContainer, { backgroundColor: theme.colors.surface }]}>
@@ -347,6 +378,15 @@ const TurfListScreen = ({ navigation }: any) => {
         visible={showFilterModal}
         onClose={() => setShowFilterModal(false)}
         onApply={handleFilterApply}
+        initialCity={manualCity || location?.city || ''}
+      />
+
+      <CitySelectionModal
+        visible={showCityModal}
+        onClose={() => setShowCityModal(false)}
+        onSelectCity={(city) => setCityManually(city)}
+        onUseCurrentLocation={detectAndSetToCurrentCity}
+        currentCity={manualCity || location?.city}
       />
     </ScreenWrapper>
   );
@@ -359,54 +399,10 @@ const styles = StyleSheet.create({
   headerContainer: {
     marginBottom: 0,
   },
-  headerGradient: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  headerContent: {
-    marginTop: 5,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  greetingText: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 3,
-    fontWeight: '900',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  profileButton: {
-    padding: 4,
-  },
-  avatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 0,
   },
   searchBar: {
     flex: 1,

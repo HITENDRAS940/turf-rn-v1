@@ -32,7 +32,9 @@ const TurfFilterModal: React.FC<TurfFilterModalProps> = ({
   // State
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
-  const [city, setCity] = useState(initialCity);
+  
+  // Use initialCity as the source of truth if provided
+  const city = initialCity; 
 
   // Generate next 7 days
   const dates = useMemo(() => {
@@ -64,6 +66,17 @@ const TurfFilterModal: React.FC<TurfFilterModalProps> = ({
     onClose();
   };
 
+  const isSlotInPast = (slotStartTime: string) => {
+    const today = new Date();
+    const isToday = formatDate(selectedDate) === formatDate(today);
+    
+    if (!isToday) return false;
+
+    const [hours] = slotStartTime.split(':').map(Number);
+    return hours <= today.getHours();
+  };
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const renderDateItem = ({ item }: { item: Date }) => {
     const isSelected = formatDate(item) === formatDate(selectedDate);
     return (
@@ -114,20 +127,14 @@ const TurfFilterModal: React.FC<TurfFilterModalProps> = ({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            {/* City Section */}
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Location</Text>
-              <View style={[styles.inputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Ionicons name="location-outline" size={20} color={theme.colors.textSecondary} />
-                <TextInput
-                  style={[styles.input, { color: theme.colors.text }]}
-                  placeholder="Enter city (e.g. Mumbai)"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={city}
-                  onChangeText={setCity}
-                />
+            {/* City Section Removed - automatically using: {city} */}
+            {city ? (
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  Location: <Text style={{color: theme.colors.primary}}>{city}</Text>
+                </Text>
               </View>
-            </View>
+            ) : null}
 
             {/* Date Section */}
             <View style={styles.section}>
@@ -148,21 +155,39 @@ const TurfFilterModal: React.FC<TurfFilterModalProps> = ({
               <View style={styles.slotsGrid}>
                 {DEFAULT_SLOTS.map((slot) => {
                     const isSelected = selectedSlotId === slot.slotId;
+                    const isDisabled = isSlotInPast(slot.startTime);
+
                     return (
                         <TouchableOpacity
                             key={slot.slotId}
                             style={[
                                 styles.slotItem,
                                 {
-                                    backgroundColor: isSelected ? theme.colors.primary : theme.colors.surface,
-                                    borderColor: isSelected ? theme.colors.primary : theme.colors.border,
+                                    backgroundColor: isSelected 
+                                      ? theme.colors.primary 
+                                      : isDisabled 
+                                        ? theme.colors.background 
+                                        : theme.colors.surface,
+                                    borderColor: isSelected 
+                                      ? theme.colors.primary 
+                                      : isDisabled 
+                                        ? theme.colors.border 
+                                        : theme.colors.border,
+                                    opacity: isDisabled ? 0.5 : 1,
                                 }
                             ]}
-                            onPress={() => setSelectedSlotId(slot.slotId)}
+                            onPress={() => !isDisabled && setSelectedSlotId(slot.slotId)}
+                            disabled={isDisabled}
                         >
                             <Text style={[
                                 styles.slotText,
-                                { color: isSelected ? '#FFFFFF' : theme.colors.text }
+                                { 
+                                  color: isSelected 
+                                    ? '#FFFFFF' 
+                                    : isDisabled 
+                                      ? theme.colors.textSecondary 
+                                      : theme.colors.text 
+                                }
                             ]}>
                                 {formatTime(slot.startTime)}
                             </Text>
@@ -232,19 +257,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
   },
   dateList: {
     gap: 12,

@@ -61,6 +61,12 @@ export const turfAPI = {
     api.get(`/turfs/${turfId}/lowest-price`),
   searchByAvailability: (data: { date: string; slotId: number; city: string }) =>
     api.get('/turfs/search-by-availability', { params: data }),
+  detectCity: (data: { latitude: number; longitude: number }) =>
+    api.post('/turfs/detect-city', data),
+  getTurfsByLocation: (data: { latitude: number; longitude: number }) =>
+    api.post('/turfs/by-location', data),
+  getCities: () => api.get('/turfs/cities'),
+  getTurfsByCity: (city: string) => api.get('/turfs/by-city', { params: { city } }),
 };
 
 // Booking APIs
