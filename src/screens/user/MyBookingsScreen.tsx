@@ -5,7 +5,6 @@ import {
   StyleSheet,
   FlatList,
   RefreshControl,
-  ActivityIndicator,
   Alert,
   StatusBar,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import BookingCard from '../../components/user/BookingCard';
 import EmptyState from '../../components/shared/EmptyState';
 import { useTabBarScroll } from '../../hooks/useTabBarScroll';
+import LoadingState from '../../components/shared/LoadingState';
 
 const MyBookingsScreen = ({ navigation, route }: any) => {
   const { theme } = useTheme();
@@ -158,15 +158,6 @@ const MyBookingsScreen = ({ navigation, route }: any) => {
     />
   );
 
-  const renderLoadingState = () => (
-    <View style={[styles.container, styles.centered]}>
-      <ActivityIndicator size="large" color={theme.colors.primary} />
-      <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-        Loading your bookings...
-      </Text>
-    </View>
-  );
-
   const renderHeader = () => (
     <View style={styles.headerContainer}>
       <LinearGradient
@@ -181,15 +172,6 @@ const MyBookingsScreen = ({ navigation, route }: any) => {
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <StatusBar barStyle="light-content" />
-        {renderLoadingState()}
-      </View>
-    );
-  }
-
   return (
     <ScreenWrapper 
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -199,27 +181,31 @@ const MyBookingsScreen = ({ navigation, route }: any) => {
       
       {renderHeader()}
 
-      <FlatList
-        data={bookings}
-        renderItem={renderBookingCard}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={[
-          styles.listContent,
-          bookings.length === 0 && styles.emptyContent
-        ]}
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
-          />
-        }
-        ListEmptyComponent={renderEmptyState}
-        showsVerticalScrollIndicator={false}
-      />
+      {loading ? (
+        <LoadingState message="Loading your bookings..." />
+      ) : (
+        <FlatList
+          data={bookings}
+          renderItem={renderBookingCard}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={[
+            styles.listContent,
+            bookings.length === 0 && styles.emptyContent
+          ]}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
+          ListEmptyComponent={renderEmptyState}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </ScreenWrapper>
   );
 };

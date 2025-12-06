@@ -230,10 +230,6 @@ const TurfListScreen = ({ navigation }: any) => {
     </TouchableOpacity>
   );
 
-  if (loading) {
-    return <LoadingState />;
-  }
-
   return (
     <ScreenWrapper 
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -272,40 +268,46 @@ const TurfListScreen = ({ navigation }: any) => {
         </View>
       </LocationHeader>
 
-      {isFilterActive && (
-        <View style={[styles.activeFilterContainer, { backgroundColor: theme.colors.surface }]}>
-          <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
-            Showing filtered results
-          </Text>
-          <TouchableOpacity onPress={clearFilters} style={styles.clearFilterButton}>
-            <Text style={[styles.clearFilterText, { color: theme.colors.primary }]}>Clear</Text>
-            <Ionicons name="close-circle" size={16} color={theme.colors.primary} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {turfs.length === 0 ? (
-        <EmptyState
-          icon="football-outline"
-          title="No Available Turfs"
-          description="All turfs are currently unavailable. Check back later for available turfs to book."
-        />
+      {loading ? (
+        <LoadingState />
       ) : (
-        <FlatList
-          data={turfs}
-          renderItem={renderTurfCard}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.list}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={theme.colors.primary}
+        <>
+          {isFilterActive && (
+            <View style={[styles.activeFilterContainer, { backgroundColor: theme.colors.surface }]}>
+              <Text style={[styles.activeFilterText, { color: theme.colors.text }]}>
+                Showing filtered results
+              </Text>
+              <TouchableOpacity onPress={clearFilters} style={styles.clearFilterButton}>
+                <Text style={[styles.clearFilterText, { color: theme.colors.primary }]}>Clear</Text>
+                <Ionicons name="close-circle" size={16} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {turfs.length === 0 ? (
+            <EmptyState
+              icon="football-outline"
+              title="No Available Turfs"
+              description="All turfs are currently unavailable. Check back later for available turfs to book."
             />
-          }
-        />
+          ) : (
+            <FlatList
+              data={turfs}
+              renderItem={renderTurfCard}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={styles.list}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={theme.colors.primary}
+                />
+              }
+            />
+          )}
+        </>
       )}
 
       {/* Search Modal */}
