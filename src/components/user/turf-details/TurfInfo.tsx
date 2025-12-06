@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { Turf } from '../../../types';
@@ -71,7 +72,7 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         {renderSectionHeader('Location', 'map')}
         <TouchableOpacity 
-          style={[styles.mapPlaceholder, { backgroundColor: theme.colors.lightGray }]}
+          style={[styles.mapPlaceholder, { backgroundColor: theme.colors.lightGray, padding: 0, height: 200 }]}
           onPress={() => {
             const lat = turf.latitude;
             const lng = turf.longitude;
@@ -87,7 +88,6 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
                 Linking.openURL(url).catch(err => console.error('An error occurred', err));
               }
             } else {
-              // Fallback for search by query if no coordinates
               const query = encodeURIComponent(`${turf.name} ${turf.location}`);
               const url = Platform.select({
                 ios: `maps:0,0?q=${query}`,
@@ -98,22 +98,55 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
               }
             }
           }}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
-          <View style={styles.mapContent}>
-            <View style={styles.mapIconCircle}>
-              <Ionicons name="map" size={24} color={theme.colors.primary} />
+          {turf.latitude && turf.longitude ? (
+            <View style={{ flex: 1, pointerEvents: 'none' }}>
+              <MapView
+                style={StyleSheet.absoluteFill}
+                initialRegion={{
+                  latitude: turf.latitude,
+                  longitude: turf.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                cacheEnabled={true}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: turf.latitude,
+                    longitude: turf.longitude,
+                  }}
+                  title={turf.name}
+                />
+              </MapView>
+              {/* Overlay content to show "View on Map" clearly */}
+              <View style={styles.mapOverlay}>
+                 <View style={[styles.overlayButton, { backgroundColor: theme.colors.surface }]}>
+                    <Text style={[styles.overlayText, { color: theme.colors.text }]}>View on Map</Text>
+                    <Ionicons name="open-outline" size={16} color={theme.colors.text} />
+                 </View>
+              </View>
             </View>
-            <View style={styles.mapTextContainer}>
-              <Text style={[styles.mapTitle, { color: theme.colors.text }]}>View on Map</Text>
-              <Text style={[styles.mapSubtitle, { color: theme.colors.textSecondary }]}>
-                {turf.latitude && turf.longitude ? 'Precise location available' : 'Search location in maps'}
-              </Text>
+          ) : (
+            <View style={[styles.mapContent, { padding: 16 }]}>
+              <View style={styles.mapIconCircle}>
+                <Ionicons name="map" size={24} color={theme.colors.primary} />
+              </View>
+              <View style={styles.mapTextContainer}>
+                <Text style={[styles.mapTitle, { color: theme.colors.text }]}>View on Map</Text>
+                {/* Fixed text reference */}
+                <Text style={[styles.mapSubtitle, { color: theme.colors.textSecondary }]}>
+                  Search location in maps
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-          </View>
-          
-          {/* Decorative map pattern background could go here if we had an image */}
+          )}
         </TouchableOpacity>
       </View>
 
@@ -295,6 +328,29 @@ const styles = StyleSheet.create({
   callActionText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  mapOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    padding: 12,
+  },
+  overlayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  overlayText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
