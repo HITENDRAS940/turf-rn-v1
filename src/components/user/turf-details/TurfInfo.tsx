@@ -14,6 +14,16 @@ interface TurfInfoProps {
 const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
   const { theme } = useTheme();
 
+  // ✅ Safely parse coordinates
+  const lat = turf.latitude != null ? Number(turf.latitude) : null;
+  const lng = turf.longitude != null ? Number(turf.longitude) : null;
+
+  const hasValidCoords =
+    lat != null &&
+    lng != null &&
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng);
+
   const renderSectionHeader = (title: string, icon: keyof typeof Ionicons.glyphMap) => (
     <View style={styles.sectionHeader}>
       <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
@@ -22,6 +32,31 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
       <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{title}</Text>
     </View>
   );
+
+  const openInMaps = () => {
+    const label = encodeURIComponent(turf.name);
+
+    if (hasValidCoords && lat !== null && lng !== null) {
+      const url = Platform.select({
+        ios: `maps:0,0?q=${label}@${lat},${lng}`,
+        android: `geo:0,0?q=${lat},${lng}(${label})`,
+      });
+
+      if (url) {
+        Linking.openURL(url).catch(err => console.error('An error occurred', err));
+      }
+    } else {
+      const query = encodeURIComponent(`${turf.name} ${turf.location}`);
+      const url = Platform.select({
+        ios: `maps:0,0?q=${query}`,
+        android: `geo:0,0?q=${query}`,
+      });
+
+      if (url) {
+        Linking.openURL(url).catch(err => console.error('An error occurred', err));
+      }
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -71,42 +106,18 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
       {/* Location Map Card */}
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
         {renderSectionHeader('Location', 'map')}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.mapPlaceholder, { backgroundColor: theme.colors.lightGray, padding: 0, height: 200 }]}
-          onPress={() => {
-            const lat = turf.latitude;
-            const lng = turf.longitude;
-            const label = encodeURIComponent(turf.name);
-            
-            if (lat && lng) {
-              const url = Platform.select({
-                ios: `maps:0,0?q=${label}@${lat},${lng}`,
-                android: `geo:0,0?q=${lat},${lng}(${label})`,
-              });
-              
-              if (url) {
-                Linking.openURL(url).catch(err => console.error('An error occurred', err));
-              }
-            } else {
-              const query = encodeURIComponent(`${turf.name} ${turf.location}`);
-              const url = Platform.select({
-                ios: `maps:0,0?q=${query}`,
-                android: `geo:0,0?q=${query}`,
-              });
-               if (url) {
-                Linking.openURL(url).catch(err => console.error('An error occurred', err));
-              }
-            }
-          }}
+          onPress={openInMaps}
           activeOpacity={0.9}
         >
-          {turf.latitude && turf.longitude ? (
+          {hasValidCoords && lat !== null && lng !== null ? (
             <View style={{ flex: 1, pointerEvents: 'none' }}>
               <MapView
                 style={StyleSheet.absoluteFill}
                 initialRegion={{
-                  latitude: turf.latitude,
-                  longitude: turf.longitude,
+                  latitude: lat,
+                  longitude: lng,
                   latitudeDelta: 0.01,
                   longitudeDelta: 0.01,
                 }}
@@ -118,18 +129,17 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
               >
                 <Marker
                   coordinate={{
-                    latitude: turf.latitude,
-                    longitude: turf.longitude,
+                    latitude: lat,
+                    longitude: lng,
                   }}
                   title={turf.name}
                 />
               </MapView>
-              {/* Overlay content to show "View on Map" clearly */}
               <View style={styles.mapOverlay}>
-                 <View style={[styles.overlayButton, { backgroundColor: theme.colors.surface }]}>
-                    <Text style={[styles.overlayText, { color: theme.colors.text }]}>View on Map</Text>
-                    <Ionicons name="open-outline" size={16} color={theme.colors.text} />
-                 </View>
+                <View style={[styles.overlayButton, { backgroundColor: theme.colors.surface }]}>
+                  <Text style={[styles.overlayText, { color: theme.colors.text }]}>View on Map</Text>
+                  <Ionicons name="open-outline" size={16} color={theme.colors.text} />
+                </View>
               </View>
             </View>
           ) : (
@@ -139,7 +149,6 @@ const TurfInfo: React.FC<TurfInfoProps> = ({ turf, onCallPress }) => {
               </View>
               <View style={styles.mapTextContainer}>
                 <Text style={[styles.mapTitle, { color: theme.colors.text }]}>View on Map</Text>
-                {/* Fixed text reference */}
                 <Text style={[styles.mapSubtitle, { color: theme.colors.textSecondary }]}>
                   Search location in maps
                 </Text>
