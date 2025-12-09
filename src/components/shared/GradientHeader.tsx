@@ -58,18 +58,18 @@ const GradientHeader: React.FC<GradientHeaderProps> = ({
             ) : (
               <View style={{ width: 40 }} />
             )}
+
+            <View>
+            <Text style={styles.headerTitle}>{title}</Text>
+            {subtitle && (
+              <Text style={styles.headerSubtitle}>{subtitle}</Text>
+            )}
+          </View>
             
             {rightElement ? (
               rightElement
             ) : (
               <View style={{ width: 40 }} />
-            )}
-          </View>
-          
-          <View>
-            <Text style={styles.headerTitle}>{title}</Text>
-            {subtitle && (
-              <Text style={styles.headerSubtitle}>{subtitle}</Text>
             )}
           </View>
         </View>
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   headerSubtitle: {
-    fontSize: 16,
+    fontSize: 13,
     color: 'rgba(255, 255, 255, 0.9)',
     fontWeight: '500',
   },

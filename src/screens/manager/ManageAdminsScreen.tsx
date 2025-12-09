@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../../components/shared/ScreenWrapper';
 import GradientHeader from '../../components/shared/GradientHeader';
 
+
+
 const ManageAdminsScreen = () => {
   const navigation = useNavigation<any>();
   const { theme } = useTheme();

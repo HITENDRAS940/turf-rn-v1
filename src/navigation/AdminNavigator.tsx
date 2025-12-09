@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import DashboardScreen from '../screens/admin/DashboardScreen';
@@ -39,7 +40,16 @@ const AdminNavigator = () => {
       }}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Turfs" component={TurfsStack} />
+      <Tab.Screen 
+        name="Turfs" 
+        component={TurfsStack}
+        options={({ route }) => {
+          const routeName = getFocusedRouteNameFromRoute(route) ?? 'TurfManagementList';
+          return {
+            tabBarStyle: routeName === 'AdminTurfDetail' ? { display: 'none' } : undefined,
+          };
+        }}
+      />
       <Tab.Screen name="Bookings" component={AllBookingsScreen} />
       <Tab.Screen name="More" component={AdminMoreScreen} />
     </Tab.Navigator>

@@ -14,11 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RevenueCard from '../../components/shared/cards/RevenueCard';
 import SlotGridCard from '../../components/shared/cards/SlotGridCard';
 import BookingCard from '../../components/shared/cards/BookingCard';
-import TurfDetailsModal, { TurfDetailsData } from '../../components/shared/modals/TurfDetailsModal';
 import SlotsManagementModal from '../../components/shared/modals/SlotsManagementModal';
 import AvailabilityModal from '../../components/shared/modals/AvailabilityModal';
-import ImageManagementModal from '../../components/shared/modals/ImageManagementModal';
 import ManualBookingModal from '../../components/shared/modals/ManualBookingModal';
+import DisableSlotByDateModal from '../../components/shared/modals/DisableSlotByDateModal';
 
 // Utilities
 import { formatDateToYYYYMMDD } from '../../utils/dateUtils';
@@ -30,11 +29,14 @@ import { SlotConfig } from '../../types';
 
 interface TurfSlot {
   id: number;
+  slotId: number;
   startTime: string;
   endTime: string;
   price: number;
   enabled: boolean;
   isBooked?: boolean;
+  isDisabledDate?: boolean; // New flag for date-specific disable
+  disableReason?: string;
 }
 
 interface TurfBooking {
@@ -65,7 +67,7 @@ interface RevenueData {
   availableSlots: number;
 }
 
-type ModalStep = 'none' | 'details' | 'slots' | 'availability' | 'images' | 'manualBooking';
+type ModalStep = 'none' | 'slots' | 'availability' | 'manualBooking' | 'disableSlot';
 
 const AdminTurfDetailScreen = () => {
   const navigation = useNavigation<any>();
@@ -84,18 +86,9 @@ const AdminTurfDetailScreen = () => {
   const [currentStep, setCurrentStep] = useState<ModalStep>('none');
   
   // Modal-specific state
-  const [turfDetailsData, setTurfDetailsData] = useState<TurfDetailsData>({
-    name: turf.name || '',
-    location: turf.location || '',
-    amenities: '',
-    description: turf.description || '',
-  });
   const [slots, setSlots] = useState<SlotConfig[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
-  const [imageUploading, setImageUploading] = useState(false);
-  const [imageDeleting, setImageDeleting] = useState(false);
   const [currentTurfData, setCurrentTurfData] = useState(turf);
-  const [saveLoading, setSaveLoading] = useState(false);
 
   // Data Fetching
   useEffect(() => {
@@ -113,6 +106,16 @@ const AdminTurfDetailScreen = () => {
       
       // Fetch bookings for this turf on the selected date
       const bookingsData = await adminAPI.getTurfBookings(turf.id, dateStr);
+      
+      // Fetch disabled slots for this date
+      const disabledSlotsResponse = await adminAPI.getDisabledSlotsForDate(turf.id, dateStr);
+      const disabledSlots = disabledSlotsResponse.data || [];
+      const disabledSlotIdsMap = new Map();
+      if (Array.isArray(disabledSlots)) {
+        disabledSlots.forEach(ds => {
+          disabledSlotIdsMap.set(ds.slotId, ds.reason);
+        });
+      }
       
       let bookingsList: TurfBooking[] = [];
       
@@ -136,7 +139,23 @@ const AdminTurfDetailScreen = () => {
 
       // Map slots with booking info using utility (do this FIRST)
       const bookedSlotIds = getBookedSlotIds(filteredBookings);
-      const slotsData = mapSlotsWithBookingInfo(latestSlots, bookedSlotIds);
+      const rawSlotsData = mapSlotsWithBookingInfo(latestSlots, bookedSlotIds);
+      
+      const slotsData: TurfSlot[] = rawSlotsData.map(slot => {
+        const disabledReason = disabledSlotIdsMap.get(slot.id);
+        const shouldDisable = !!disabledReason;
+        
+        return {
+          ...slot,
+          slotId: slot.id,
+          // If explicitly disabled for this date, mark enabled=false or use specific flag
+          // Using enabled=false ensures visual consistency with grid
+          enabled: shouldDisable ? false : slot.enabled, 
+          isDisabledDate: shouldDisable,
+          disableReason: disabledReason,
+        };
+      });
+
       setSlotsWithBookings(slotsData);
 
       // Calculate revenue using the mapped slots (with isBooked property)
@@ -150,7 +169,12 @@ const AdminTurfDetailScreen = () => {
       setBookings([]);
       const defaultRevenue = calculateRevenueData([], turf.slots || []);
       setRevenue(defaultRevenue);
-      const slotsData = mapSlotsWithBookingInfo(turf.slots || [], new Set());
+      const rawSlotsData = mapSlotsWithBookingInfo(turf.slots || [], new Set());
+      const slotsData: TurfSlot[] = rawSlotsData.map(slot => ({
+        ...slot,
+        slotId: slot.id
+      }));
+      
       setSlotsWithBookings(slotsData);
     } finally {
       setLoading(false);
@@ -171,24 +195,7 @@ const AdminTurfDetailScreen = () => {
   };
 
   // Management Actions
-  const handleEditTurf = async () => {
-    // Load current turf data
-    try {
-      const response = await turfAPI.getTurfById(turf.id);
-      const turfData = response.data;
-      
-      setTurfDetailsData({
-        name: turfData.name || '',
-        location: turfData.location || '',
-        amenities: turfData.amenities || '',
-        description: turfData.description || '',
-      });
-      
-      setCurrentStep('details');
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to fetch turf details');
-    }
-  };
+
 
   const handleManageSlots = async () => {
     await loadSlots();
@@ -248,12 +255,33 @@ const AdminTurfDetailScreen = () => {
     );
   };
 
-  const handleManageImages = () => {
-    setCurrentStep('images');
-  };
+
 
   const handleManualBooking = () => {
     setCurrentStep('manualBooking');
+  };
+
+  const handleDisableSlot = () => {
+    setCurrentStep('disableSlot'); // Use the new ModalStep type
+  };
+
+  const handleDisableSlotConfirm = async (slotId: number, reason: string) => {
+    try {
+      const dateStr = formatDateToYYYYMMDD(selectedDate);
+      
+      await adminAPI.disableSlotForDate({
+        turfId: turf.id,
+        slotId: slotId,
+        date: dateStr,
+        reason: reason,
+      });
+
+      Alert.alert('Success', 'Slot disabled successfully');
+      fetchTurfData();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to disable slot');
+      throw error;
+    }
   };
 
   const handleManualBookingConfirm = async (slotIds: number[]) => {
@@ -274,25 +302,7 @@ const AdminTurfDetailScreen = () => {
   };
 
   // Modal Callbacks
-  const handleTurfDetailsSave = async (details: TurfDetailsData) => {
-    setSaveLoading(true);
-    try {
-      await adminAPI.updateTurfDetails(turf.id, {
-        name: details.name,
-        location: details.location,
-        description: details.description,
-        contactNumber: '', // Add if needed
-      });
-      
-      Alert.alert('Success', 'Turf details updated successfully');
-      
-      fetchTurfData();
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to update turf details');
-    } finally {
-      setSaveLoading(false);
-    }
-  };
+
 
   const handleSlotsSave = async (updatedSlots: SlotConfig[]) => {
     try {
@@ -330,56 +340,13 @@ const AdminTurfDetailScreen = () => {
     }
   };
 
-  const handleImageUpload = async (images: any[]) => {
-    setImageUploading(true);
-    try {
-      const formData = new FormData();
-      images.forEach((asset, index) => {
-        formData.append('images', {
-          uri: asset.uri,
-          type: 'image/jpeg',
-          name: `image_${index}.jpg`,
-        } as any);
-      });
 
-      await adminAPI.uploadTurfImages(turf.id, formData);
-      
-      Alert.alert('Success', 'Images uploaded successfully');
-      
-      // Refresh turf data to get updated images
-      await fetchTurfData();
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to upload images');
-      throw error;
-    } finally {
-      setImageUploading(false);
-    }
-  };
-
-  const handleImageDelete = async (imageUrls: string[]) => {
-    setImageDeleting(true);
-    try {
-      await adminAPI.deleteTurfImages(turf.id, imageUrls);
-      
-      Alert.alert('Success', 'Images deleted successfully');
-      
-      // Refresh turf data to get updated images
-      await fetchTurfData();
-    } catch (error: any) {
-      Alert.alert('Error', error.response?.data?.message || 'Failed to delete images');
-      throw error;
-    } finally {
-      setImageDeleting(false);
-    }
-  };
 
   const closeModal = () => {
     setCurrentStep('none');
   };
 
-  const closeImagesModal = () => {
-    setCurrentStep('none');
-  };
+
 
   // Render Bookings List
   const renderBookingsList = () => {
@@ -456,25 +423,7 @@ const AdminTurfDetailScreen = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.actionButtonsRow}
         >
-          <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: theme.colors.primary + '15' }]}
-            onPress={handleManageImages}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Ionicons name="images" size={22} color={theme.colors.primary} />
-            </View>
-            <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>Images</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: theme.colors.primary + '15' }]}
-            onPress={handleEditTurf}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Ionicons name="create" size={22} color={theme.colors.primary} />
-            </View>
-            <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>Edit Turf</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity 
             style={[styles.actionButtonItem, { backgroundColor: theme.colors.primary + '15' }]}
@@ -504,6 +453,16 @@ const AdminTurfDetailScreen = () => {
               <Ionicons name="add-circle" size={22} color="#10B981" />
             </View>
             <Text style={[styles.actionButtonText, { color: '#10B981' }]}>Book Slot</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButtonItem, { backgroundColor: '#F9731615' }]}
+            onPress={handleDisableSlot}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#F9731620' }]}>
+              <Ionicons name="ban" size={22} color="#F97316" />
+            </View>
+            <Text style={[styles.actionButtonText, { color: '#F97316' }]}>Disable Slot</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -568,36 +527,35 @@ const AdminTurfDetailScreen = () => {
         >
           <View style={styles.content}>
             {revenue && (
-              <RevenueCard
-                data={{
-                  totalRevenue: revenue.totalRevenue,
-                  totalBookings: revenue.totalBookings,
-                  bookedSlots: revenue.bookedSlots,
-                  availableSlots: revenue.availableSlots,
-                }}
-              />
+              <View style={styles.cardContainer}>
+                <RevenueCard
+                  data={{
+                    totalRevenue: revenue.totalRevenue,
+                    totalBookings: revenue.totalBookings,
+                    bookedSlots: revenue.bookedSlots,
+                    availableSlots: revenue.availableSlots,
+                  }}
+                />
+              </View>
             )}
             
             {slotsWithBookings.length > 0 && (
-              <SlotGridCard
-                slots={slotsWithBookings}
-              />
+              <View style={styles.cardContainer}>
+                <SlotGridCard
+                  slots={slotsWithBookings}
+                />
+              </View>
             )}
             
-            {renderBookingsList()}
+            <View style={styles.cardContainer}>
+              {renderBookingsList()}
+            </View>
           </View>
         </ScrollView>
       )}
 
       {/* Modals */}
-      <TurfDetailsModal
-        visible={currentStep === 'details'}
-        onClose={closeModal}
-        onSave={handleTurfDetailsSave}
-        initialData={turfDetailsData}
-        isEditMode={true}
-        loading={saveLoading}
-      />
+
 
       <SlotsManagementModal
         visible={currentStep === 'slots'}
@@ -619,16 +577,7 @@ const AdminTurfDetailScreen = () => {
         turfId={turf.id}
       />
 
-      <ImageManagementModal
-        visible={currentStep === 'images'}
-        onClose={closeImagesModal}
-        onUpload={handleImageUpload}
-        onDelete={handleImageDelete}
-        existingImages={currentTurfData.images || []}
-        uploading={imageUploading}
-        deleting={imageDeleting}
-        turfName={currentTurfData.name}
-      />
+
 
       <ManualBookingModal
         visible={currentStep === 'manualBooking'}
@@ -637,6 +586,15 @@ const AdminTurfDetailScreen = () => {
         slots={slotsWithBookings}
         turfName={turf.name}
         selectedDate={formatDateToYYYYMMDD(selectedDate)}
+      />
+
+      <DisableSlotByDateModal
+        visible={currentStep === 'disableSlot'}
+        onClose={closeModal}
+        onConfirm={handleDisableSlotConfirm}
+        slots={slotsWithBookings}
+        selectedDate={formatDateToYYYYMMDD(selectedDate)}
+        turfName={turf.name}
       />
     </ScreenWrapper>
   );
@@ -694,12 +652,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   actionButtonsContainer: {
-    paddingVertical: 12,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   actionButtonsRow: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 10,
+    paddingHorizontal: 20,
+    gap: 12,
   },
   actionButtonItem: {
     flexDirection: 'column',
@@ -728,11 +688,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
   dateButton: {
     padding: 8,
@@ -759,7 +723,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingTop: 12,
     paddingBottom: 40,
+  },
+  cardContainer: {
+    marginBottom: 24,
   },
   bookingsContainer: {
     marginBottom: 20,

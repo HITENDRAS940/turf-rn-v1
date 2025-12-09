@@ -136,6 +136,13 @@ export const adminAPI = {
   // Manual Booking by Admin
   createManualBooking: (data: { turfId: number; slotIds: number[]; bookingDate: string }) =>
     api.post('/admin/booking', data),
+
+  // Disable Slot for a Date (One-off)
+  disableSlotForDate: (data: { turfId: number; slotId: number; date: string; reason: string }) =>
+    api.post('/admin/slot/disable-for-date', data),
+
+  getDisabledSlotsForDate: (turfId: number, date: string) =>
+    api.get(`/admin/turf/${turfId}/disabled-slots/date?date=${date}`),
 };
 
 // Manager APIs
@@ -175,6 +182,12 @@ export const managerAPI = {
 
   getTurfRevenue: async (turfId: number, date: string) => {
     const response = await api.get(`/manager/turfs/${turfId}/revenue?date=${date}`);
+    return response.data;
+  },
+
+  createAdminTurfManager: async (adminId: number, data: any) => {
+    // POST /turf-details/{adminId}
+    const response = await api.post(`/manager/turf-details/${adminId}`, data);
     return response.data;
   },
 };

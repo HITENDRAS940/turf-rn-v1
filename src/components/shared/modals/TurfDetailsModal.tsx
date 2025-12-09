@@ -21,18 +21,16 @@ import { useTheme } from "../../../contexts/ThemeContext";
 import Button from "../Button";
 import FormField from "../FormField";
 
-import {
-  validateTurfName,
-  validateLocation,
-  validateDescription,
-  validateAmenities,
-} from "../../../utils/validationUtils";
+
 
 export interface TurfDetailsData {
   name: string;
   location: string;
-  amenities: string;
+  city: string;
+  latitude: string;
+  longitude: string;
   description: string;
+  contactNumber: string;
 }
 
 interface TurfDetailsModalProps {
@@ -86,17 +84,13 @@ const TurfDetailsModal: React.FC<TurfDetailsModalProps> = ({
   const validateForm = () => {
     const newErrors: Partial<Record<keyof TurfDetailsData, string>> = {};
 
-    const validations = {
-      name: validateTurfName(formData.name),
-      location: validateLocation(formData.location),
-      amenities: validateAmenities(formData.amenities),
-      description: validateDescription(formData.description),
-    };
-
-    for (const key in validations) {
-      const result = validations[key as keyof TurfDetailsData];
-      if (!result.isValid) newErrors[key as keyof TurfDetailsData] = result.error;
-    }
+    if (!formData.name) newErrors.name = "Name is required";
+    if (!formData.location) newErrors.location = "Location is required";
+    if (!formData.city) newErrors.city = "City is required";
+    if (!formData.latitude) newErrors.latitude = "Latitude is required";
+    if (!formData.longitude) newErrors.longitude = "Longitude is required";
+    if (!formData.contactNumber) newErrors.contactNumber = "Contact Number is required";
+    if (!formData.description) newErrors.description = "Description is required";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -173,15 +167,50 @@ const TurfDetailsModal: React.FC<TurfDetailsModalProps> = ({
         placeholder="Enter location"
         onChange={(v) => handleChange("location", v)}
       />
+      
+      <FormField
+        label="City"
+        icon="map-outline"
+        required
+        value={formData.city}
+        error={errors.city}
+        placeholder="Enter city"
+        onChange={(v) => handleChange("city", v)}
+      />
+
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}>
+           <FormField
+            label="Latitude"
+            icon="navigate-outline"
+            required
+            value={formData.latitude}
+            error={errors.latitude}
+            placeholder="Ex: 12.9716"
+            onChange={(v) => handleChange("latitude", v)}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+           <FormField
+            label="Longitude"
+            icon="navigate-outline"
+            required
+            value={formData.longitude}
+            error={errors.longitude}
+            placeholder="Ex: 77.5946"
+            onChange={(v) => handleChange("longitude", v)}
+          />
+        </View>
+      </View>
 
       <FormField
-        label="Amenities (comma-separated)"
-        icon="list-outline"
-        multiline
-        value={formData.amenities}
-        error={errors.amenities}
-        placeholder="Parking, Washroom, Changing Room"
-        onChange={(v) => handleChange("amenities", v)}
+        label="Contact Number"
+        icon="call-outline"
+        required
+        value={formData.contactNumber}
+        error={errors.contactNumber}
+        placeholder="Enter contact number"
+        onChange={(v) => handleChange("contactNumber", v)}
       />
 
       <FormField

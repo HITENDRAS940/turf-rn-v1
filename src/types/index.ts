@@ -165,6 +165,7 @@ export interface CreateAdminPayload {
   name: string;
   businessName: string;
   businessAddress: string;
+  city: string;
 }
 
 export interface AdminResponse {

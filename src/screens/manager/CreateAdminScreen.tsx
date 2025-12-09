@@ -18,6 +18,7 @@ const CreateAdminScreen = () => {
     email: '',
     businessName: '',
     businessAddress: '',
+    city: '',
   });
 
   const handleSubmit = async () => {
@@ -73,6 +74,17 @@ const CreateAdminScreen = () => {
               keyboardType="phone-pad"
               value={formData.phone}
               onChangeText={(text) => setFormData({ ...formData, phone: text })}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={[styles.label, { color: theme.colors.text }]}>City *</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="Enter city"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={formData.city}
+              onChangeText={(text) => setFormData({ ...formData, city: text })}
             />
           </View>
 

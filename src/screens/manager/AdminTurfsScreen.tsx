@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../../components/shared/ScreenWrapper';
 import { Alert } from 'react-native';
 import GradientHeader from '../../components/shared/GradientHeader';
+import TurfDetailsModal, { TurfDetailsData } from '../../components/shared/modals/TurfDetailsModal';
 
 interface AdminTurf {
   id: number;
@@ -45,6 +46,54 @@ const AdminTurfsScreen = () => {
 
   const handleImageLoadEnd = (id: number) => {
     setImagesLoading(prev => ({ ...prev, [id]: false }));
+  };
+
+  // Modal State
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [turfDetailsData, setTurfDetailsData] = useState<TurfDetailsData>({
+    name: '',
+    location: '',
+    city: '',
+    latitude: '',
+    longitude: '',
+    description: '',
+    contactNumber: '',
+  });
+
+  const handleAddTurf = () => {
+    setTurfDetailsData({
+      name: '',
+      location: '',
+      city: '',
+      latitude: '',
+      longitude: '',
+      description: '',
+      contactNumber: '',
+    });
+    setIsModalVisible(true);
+  };
+
+  const handleSaveTurf = async (details: TurfDetailsData) => {
+    setSaveLoading(true);
+    try {
+      await managerAPI.createAdminTurfManager(adminProfileId, {
+        name: details.name,
+        location: details.location,
+        city: details.city,
+        latitude: parseFloat(details.latitude),
+        longitude: parseFloat(details.longitude),
+        description: details.description,
+        contactNumber: details.contactNumber,
+      });
+      setIsModalVisible(false);
+      Alert.alert('Success', 'Turf created successfully');
+      fetchAdminTurfs();
+    } catch (error: any) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to create turf');
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -186,6 +235,14 @@ const AdminTurfsScreen = () => {
         title="Turfs"
         subtitle={`Managed by ${adminName}`}
         showBack={true}
+        rightElement={
+          <TouchableOpacity 
+            style={styles.addButton}
+            onPress={handleAddTurf}
+          >
+            <Ionicons name="add" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        }
       />
 
       {/* Turfs List */}
@@ -255,6 +312,14 @@ const AdminTurfsScreen = () => {
           }
         />
       )}
+      
+      <TurfDetailsModal
+        visible={isModalVisible}
+        onClose={() => setIsModalVisible(false)}
+        onSave={handleSaveTurf}
+        initialData={turfDetailsData}
+        loading={saveLoading}
+      />
     </ScreenWrapper>
   );
 };
@@ -420,6 +485,14 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

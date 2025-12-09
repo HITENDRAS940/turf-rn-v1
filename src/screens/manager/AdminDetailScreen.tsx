@@ -99,7 +99,7 @@ const AdminDetailScreen = () => {
     <View style={styles.infoRow}>
       <View style={styles.infoLeft}>
         <View style={[styles.iconContainer, { backgroundColor: theme.colors.surface }]}>
-          <Ionicons name={icon} size={16} color={theme.colors.textSecondary} />
+          <Ionicons name={icon} size={25} color={theme.colors.textSecondary} />
         </View>
         <Text style={[styles.infoLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
       </View>
@@ -298,11 +298,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   infoLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
   infoValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     flex: 1,
     textAlign: 'right',
