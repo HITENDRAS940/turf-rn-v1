@@ -67,6 +67,8 @@ export const turfAPI = {
     api.post('/turfs/by-location', data),
   getCities: () => api.get('/turfs/cities'),
   getTurfsByCity: (city: string) => api.get('/turfs/by-city', { params: { city } }),
+  getSlotStatus: (turfId: number, date: string) =>
+    api.get(`/turf-slots/${turfId}/slot-status?date=${date}`),
 };
 
 // Booking APIs

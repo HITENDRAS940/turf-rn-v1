@@ -22,7 +22,7 @@ import DisableSlotByDateModal from '../../components/shared/modals/DisableSlotBy
 // Utilities
 import { formatDateToYYYYMMDD } from '../../utils/dateUtils';
 import { calculateRevenueData } from '../../utils/revenueUtils';
-import { mapSlotsWithBookingInfo, getBookedSlotIds } from '../../utils/slotUtils';
+import { mapSlotsWithBookingInfo } from '../../utils/slotUtils';
 
 // Types
 import { SlotConfig } from '../../types';
@@ -80,10 +80,13 @@ const AdminTurfDetailScreen = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [bookings, setBookings] = useState<TurfBooking[]>([]);
   const [revenue, setRevenue] = useState<RevenueData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Initial loading
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [loadingBookings, setLoadingBookings] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [slotsWithBookings, setSlotsWithBookings] = useState<TurfSlot[]>([]);
   const [currentStep, setCurrentStep] = useState<ModalStep>('none');
+  const [activeTab, setActiveTab] = useState<'slots' | 'bookings'>('slots');
   
   // Modal-specific state
   const [slots, setSlots] = useState<SlotConfig[]>([]);
@@ -92,30 +95,98 @@ const AdminTurfDetailScreen = () => {
 
   // Data Fetching
   useEffect(() => {
-    fetchTurfData();
-  }, [selectedDate]);
+    // Determine what to fetch based on active tab
+    if (activeTab === 'slots') {
+      fetchSlotData();
+    } else {
+      fetchBookingData();
+    }
+  }, [selectedDate, activeTab]);
 
-  const fetchTurfData = async () => {
+  const fetchSlotData = async () => {
     try {
+      setLoadingSlots(true);
       const dateStr = formatDateToYYYYMMDD(selectedDate);
       
-      // Fetch updated turf data to get latest images and slots
-      const turfResponse = await turfAPI.getTurfById(turf.id);
-      const latestTurfData = turfResponse.data;
-      setCurrentTurfData(latestTurfData);
+      // Fetch slot status (booked and disabled slots)
+      const slotStatusResponse = await turfAPI.getSlotStatus(turf.id, dateStr);
+      const { disabled: disabledSlotIds, booked: bookedSlotIds } = slotStatusResponse.data;
+      
+      // Create Sets for efficient lookup - COERCE TO NUMBERS to handle string IDs from API
+      const disabledSet = new Set((disabledSlotIds || []).map((id: any) => Number(id)));
+      const bookedSet = new Set((bookedSlotIds || []).map((id: any) => Number(id)));
+
+      // Use slots from route params (initial turf data) or state if previously updated
+      const baseSlots = currentTurfData.slots || turf.slots || [];
+
+      // Map slots using the new status data
+      const slotsData: TurfSlot[] = baseSlots.map((slot: any) => {
+        // The API returns logical IDs based on time (1 = 00:00, 2 = 01:00, etc.)
+        // We calculate this derived ID to ensure we match correctly regardless of DB ID
+        // Handle both "HH:MM:SS" and ISO "YYYY-MM-DDTHH:MM:SS" formats
+        let timeStr = slot.startTime;
+        if (timeStr.includes('T')) {
+            timeStr = timeStr.split('T')[1];
+        }
+        const startHour = parseInt(timeStr.split(':')[0], 10);
+        const logicalId = startHour + 1; // 00:00 -> 1, 01:00 -> 2
+        
+        // Also keep the actual slot ID for React keys/other logic
+        const dbId = slot.id || slot.slotId;
+        
+        // Check status using the LOGICAL ID matching the API response format
+        const isDisabled = disabledSet.has(logicalId);
+        const isBooked = bookedSet.has(logicalId);
+        
+        return {
+          ...slot,
+          slotId: dbId, // Keep original ID for referencing
+          // If disabled by date API, mark as disabled (enabled=false)
+          enabled: isDisabled ? false : (slot.enabled !== false), 
+          isBooked: isBooked,
+          isDisabledDate: isDisabled,
+        };
+      });
+
+      // Sort slots by start time to ensure they appear in order (00:00 -> 23:00)
+      slotsData.sort((a, b) => {
+        // robust comparison handling potential T separator in comparison too if needed, 
+        // but mapped slots keep original startTime string. 
+        // Assuming standard HH:MM:SS format sorting works.
+        // Special case: we want to ensure robust sort.
+        
+        let timeA = a.startTime;
+        let timeB = b.startTime;
+        
+        // normalize if needed (though map preserved valid strings)
+        if (timeA.includes('T')) timeA = timeA.split('T')[1];
+        if (timeB.includes('T')) timeB = timeB.split('T')[1];
+        
+        return timeA.localeCompare(timeB);
+      });
+
+      setSlotsWithBookings(slotsData);
+    } catch (error: any) {
+      console.error('Error fetching slot data:', error);
+      Alert.alert('Error', 'Failed to fetch slot details');
+      
+      // Fallback
+      const rawSlotsData = mapSlotsWithBookingInfo(turf.slots || [], new Set());
+      setSlotsWithBookings(rawSlotsData.map(slot => ({ ...slot, slotId: slot.id })));
+    } finally {
+      setLoadingSlots(false);
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchBookingData = async () => {
+    try {
+      setLoadingBookings(true);
+      const dateStr = formatDateToYYYYMMDD(selectedDate);
       
       // Fetch bookings for this turf on the selected date
       const bookingsData = await adminAPI.getTurfBookings(turf.id, dateStr);
-      
-      // Fetch disabled slots for this date
-      const disabledSlotsResponse = await adminAPI.getDisabledSlotsForDate(turf.id, dateStr);
-      const disabledSlots = disabledSlotsResponse.data || [];
-      const disabledSlotIdsMap = new Map();
-      if (Array.isArray(disabledSlots)) {
-        disabledSlots.forEach(ds => {
-          disabledSlotIdsMap.set(ds.slotId, ds.reason);
-        });
-      }
       
       let bookingsList: TurfBooking[] = [];
       
@@ -134,49 +205,28 @@ const AdminTurfDetailScreen = () => {
       
       setBookings(filteredBookings);
 
-      // Use latest slots from API response (not stale route params)
-      const latestSlots = latestTurfData.slots || [];
-
-      // Map slots with booking info using utility (do this FIRST)
-      const bookedSlotIds = getBookedSlotIds(filteredBookings);
-      const rawSlotsData = mapSlotsWithBookingInfo(latestSlots, bookedSlotIds);
+      // We need slot structure to calculate availability for Revenue Card
+      // We can reuse the slots from state if available, or base structure
+      const baseSlots = currentTurfData.slots || turf.slots || [];
+      // Simplistic mapping for revenue calc - we just need counts
+      const slotsForRevenue: TurfSlot[] = baseSlots.map((slot: any) => ({
+         ...slot,
+         slotId: slot.id || slot.slotId,
+         // We know which are booked from filteredBookings if we wanted to be precise, 
+         // but revenueUtils calculates this from bookings list + total slots.
+         // Effectively we just need the array length and prices.
+      }));
       
-      const slotsData: TurfSlot[] = rawSlotsData.map(slot => {
-        const disabledReason = disabledSlotIdsMap.get(slot.id);
-        const shouldDisable = !!disabledReason;
-        
-        return {
-          ...slot,
-          slotId: slot.id,
-          // If explicitly disabled for this date, mark enabled=false or use specific flag
-          // Using enabled=false ensures visual consistency with grid
-          enabled: shouldDisable ? false : slot.enabled, 
-          isDisabledDate: shouldDisable,
-          disableReason: disabledReason,
-        };
-      });
-
-      setSlotsWithBookings(slotsData);
-
-      // Calculate revenue using the mapped slots (with isBooked property)
-      const revenueData = calculateRevenueData(filteredBookings, slotsData);
+      const revenueData = calculateRevenueData(filteredBookings, slotsForRevenue);
       setRevenue(revenueData);
 
     } catch (error: any) {
-      console.error('Error fetching turf details:', error);
-      Alert.alert('Error', 'Failed to fetch turf details');
-      
+      console.error('Error fetching booking data:', error);
+      Alert.alert('Error', 'Failed to fetch bookings');
       setBookings([]);
-      const defaultRevenue = calculateRevenueData([], turf.slots || []);
-      setRevenue(defaultRevenue);
-      const rawSlotsData = mapSlotsWithBookingInfo(turf.slots || [], new Set());
-      const slotsData: TurfSlot[] = rawSlotsData.map(slot => ({
-        ...slot,
-        slotId: slot.id
-      }));
-      
-      setSlotsWithBookings(slotsData);
+      setRevenue(null);
     } finally {
+      setLoadingBookings(false);
       setLoading(false);
       setRefreshing(false);
     }
@@ -184,14 +234,18 @@ const AdminTurfDetailScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTurfData();
+    if (activeTab === 'slots') {
+      fetchSlotData();
+    } else {
+      fetchBookingData();
+    }
   };
 
   const changeDate = (days: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(newDate.getDate() + days);
     setSelectedDate(newDate);
-    setLoading(true);
+    // Loading state is handled in individual fetch functions which will trigger via useEffect
   };
 
   // Management Actions
@@ -277,7 +331,8 @@ const AdminTurfDetailScreen = () => {
       });
 
       Alert.alert('Success', 'Slot disabled successfully');
-      fetchTurfData();
+      // Only refresh if on slots tab, which we likely are if disabling a slot
+      if (activeTab === 'slots') fetchSlotData();
     } catch (error: any) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to disable slot');
       throw error;
@@ -295,7 +350,10 @@ const AdminTurfDetailScreen = () => {
       });
       
       // Refresh data to show new booking
-      fetchTurfData();
+      // If we are on slots tab, update slot status. If on bookings, update bookings.
+      // Usually manual booking will keep us on the same screen. We should probably refresh the current view.
+      if (activeTab === 'slots') fetchSlotData();
+      else fetchBookingData();
     } catch (error: any) {
       throw error; // Re-throw to let modal handle the error
     }
@@ -320,7 +378,8 @@ const AdminTurfDetailScreen = () => {
       }
       
       // Refresh turf data to reflect latest DB state
-      fetchTurfData();
+      if (activeTab === 'slots') fetchSlotData();
+      else fetchBookingData();
     } catch (error: any) {
       throw error; // Re-throw to let modal handle the error
     }
@@ -334,7 +393,8 @@ const AdminTurfDetailScreen = () => {
         await adminAPI.setTurfNotAvailable(turf.id);
       }
 
-      fetchTurfData();
+      if (activeTab === 'slots') fetchSlotData();
+      else fetchBookingData();
     } catch (error: any) {
       throw error; // Re-throw to let modal handle the error
     }
@@ -412,6 +472,12 @@ const AdminTurfDetailScreen = () => {
                 </Text>
               </View>
             </View>
+            <TouchableOpacity 
+              onPress={handleDeleteTurf}
+              style={[styles.backButton, { marginLeft: 16, marginRight: 0, backgroundColor: 'rgba(239, 68, 68, 0.2)' }]}
+            >
+              <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -423,56 +489,36 @@ const AdminTurfDetailScreen = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.actionButtonsRow}
         >
-
-
           <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: theme.colors.primary + '15' }]}
+            style={[styles.actionChip, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '30' }]}
             onPress={handleManageSlots}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Ionicons name="time" size={22} color={theme.colors.primary} />
-            </View>
-            <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>Slots</Text>
+            <Ionicons name="time" size={18} color={theme.colors.primary} />
+            <Text style={[styles.actionChipText, { color: theme.colors.primary }]}>Slots</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: theme.colors.primary + '15' }]}
+            style={[styles.actionChip, { backgroundColor: theme.colors.primary + '15', borderColor: theme.colors.primary + '30' }]}
             onPress={handleManageAvailability}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
-              <Ionicons name="toggle" size={22} color={theme.colors.primary} />
-            </View>
-            <Text style={[styles.actionButtonText, { color: theme.colors.primary }]}>Availability</Text>
+            <Ionicons name="toggle" size={18} color={theme.colors.primary} />
+            <Text style={[styles.actionChipText, { color: theme.colors.primary }]}>Availability</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: '#10B98115' }]}
+            style={[styles.actionChip, { backgroundColor: '#10B98115', borderColor: '#10B98130' }]}
             onPress={handleManualBooking}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#10B98120' }]}>
-              <Ionicons name="add-circle" size={22} color="#10B981" />
-            </View>
-            <Text style={[styles.actionButtonText, { color: '#10B981' }]}>Book Slot</Text>
+            <Ionicons name="add-circle" size={18} color="#10B981" />
+            <Text style={[styles.actionChipText, { color: '#10B981' }]}>Book</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: '#F9731615' }]}
+            style={[styles.actionChip, { backgroundColor: '#F9731615', borderColor: '#F9731630' }]}
             onPress={handleDisableSlot}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#F9731620' }]}>
-              <Ionicons name="ban" size={22} color="#F97316" />
-            </View>
-            <Text style={[styles.actionButtonText, { color: '#F97316' }]}>Disable Slot</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionButtonItem, { backgroundColor: theme.colors.error + '15' }]}
-            onPress={handleDeleteTurf}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: theme.colors.error + '20' }]}>
-              <Ionicons name="trash" size={22} color={theme.colors.error} />
-            </View>
-            <Text style={[styles.actionButtonText, { color: theme.colors.error }]}>Delete</Text>
+            <Ionicons name="ban" size={18} color="#F97316" />
+            <Text style={[styles.actionChipText, { color: '#F97316' }]}>Disable</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -505,54 +551,109 @@ const AdminTurfDetailScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Content */}
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
-            Loading data...
-          </Text>
+
+
+      {/* Tab Selector */}
+      <View style={styles.tabContainer}>
+        <View style={[styles.tabSelector, { backgroundColor: theme.colors.card }]}>
+          <TouchableOpacity 
+            style={[
+              styles.tabButton, 
+              activeTab === 'slots' && { backgroundColor: theme.colors.primary }
+            ]}
+            onPress={() => setActiveTab('slots')}
+          >
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'slots' ? '#FFF' : theme.colors.textSecondary }
+            ]}>Slots</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[
+              styles.tabButton, 
+              activeTab === 'bookings' && { backgroundColor: theme.colors.primary }
+            ]}
+            onPress={() => setActiveTab('bookings')}
+          >
+            <Text style={[
+              styles.tabText, 
+              { color: activeTab === 'bookings' ? '#FFF' : theme.colors.textSecondary }
+            ]}>Bookings</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh}
-              tintColor={theme.colors.primary}
-              colors={[theme.colors.primary]}
-            />
-          }
-        >
-          <View style={styles.content}>
-            {revenue && (
-              <View style={styles.cardContainer}>
-                <RevenueCard
-                  data={{
-                    totalRevenue: revenue.totalRevenue,
-                    totalBookings: revenue.totalBookings,
-                    bookedSlots: revenue.bookedSlots,
-                    availableSlots: revenue.availableSlots,
-                  }}
-                />
+      </View>
+
+      {/* Content */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+          />
+        }
+      >
+        <View style={styles.content}>
+          
+          {activeTab === 'slots' ? (
+            // SLOTS TAB CONTENT
+            loadingSlots ? (
+              <View style={styles.center}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                  Loading slots...
+                </Text>
               </View>
-            )}
-            
-            {slotsWithBookings.length > 0 && (
+            ) : (
               <View style={styles.cardContainer}>
-                <SlotGridCard
-                  slots={slotsWithBookings}
-                />
+                {slotsWithBookings.length > 0 ? (
+                  <SlotGridCard
+                    slots={slotsWithBookings}
+                  />
+                ) : (
+                   <View style={styles.emptyBookings}>
+                    <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                      No slots configured
+                    </Text>
+                   </View>
+                )}
               </View>
-            )}
-            
-            <View style={styles.cardContainer}>
-              {renderBookingsList()}
-            </View>
-          </View>
-        </ScrollView>
-      )}
+            )
+          ) : (
+            // BOOKINGS TAB CONTENT
+            loadingBookings ? (
+              <View style={styles.center}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>
+                  Loading bookings...
+                </Text>
+              </View>
+            ) : (
+              <>
+                {revenue && (
+                  <View style={styles.cardContainer}>
+                    <RevenueCard
+                      data={{
+                        totalRevenue: revenue.totalRevenue,
+                        totalBookings: revenue.totalBookings,
+                        bookedSlots: revenue.bookedSlots,
+                        availableSlots: revenue.availableSlots,
+                      }}
+                    />
+                  </View>
+                )}
+                
+                <View style={styles.cardContainer}>
+                  {renderBookingsList()}
+                </View>
+              </>
+            )
+          )}
+
+        </View>
+      </ScrollView>
 
       {/* Modals */}
 
@@ -652,34 +753,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   actionButtonsContainer: {
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   actionButtonsRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    gap: 12,
+    gap: 10,
   },
-  actionButtonItem: {
-    flexDirection: 'column',
+  actionChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    gap: 8,
-    minWidth: 85,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
   },
-  actionIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    fontSize: 12,
+  actionChipText: {
+    fontSize: 13,
     fontWeight: '600',
   },
   dateSelector: {
@@ -753,6 +846,26 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
+  },
+  tabContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  tabSelector: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 4,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
